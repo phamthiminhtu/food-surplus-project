@@ -1,0 +1,12 @@
+# Core
+streamlit
+requests
+Pillow
+
+# OCR — install ONE (pytesseract also needs: brew install tesseract)
+pytesseract
+easyocr
+
+# Voice (optional — also needs: brew install portaudio)
+SpeechRecognition
+PyAudio

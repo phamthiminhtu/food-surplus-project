@@ -32,7 +32,7 @@ Photo / Voice / Text
 OCR or speech-to-text  →  raw label text
         |
         v
-LLM extraction (Ollama + qwen2.5:3b)  →  structured donation fields
+LLM extraction (Ollama + llama3.2:3b)  →  structured donation fields
         |
         v
 Human review & edit
@@ -53,13 +53,13 @@ No barcode scanner needed. No manual typing.
 | Layer | Tool |
 |---|---|
 | UI | Streamlit |
-| LLM | Ollama + `qwen2.5:3b` (local, no API key) |
-| OCR | pytesseract → easyocr fallback |
+| LLM | Ollama + `llama3.2:3b` (local, no API key) |
+| OCR | pytesseract + pillow-heif (HEIC/iPhone photo support) |
 | Voice | SpeechRecognition + Google free tier |
 | DB | DuckDB |
 | FoodCloud | Mocked (out of scope for demo) |
 
-**Why a small model?** `qwen2.5:3b` runs locally with no API cost, which matters for a high-volume, low-margin use case like food donation. The tradeoff: smaller models are less reliable at structured extraction and will need prompt tuning or fine-tuning to hit production accuracy.
+**Why a small model?** `llama3.2:3b` runs locally with no API cost, which matters for a high-volume, low-margin use case like food donation. The tradeoff: smaller models are less reliable at structured extraction and will need prompt tuning or fine-tuning to hit production accuracy.
 
 ---
 
@@ -73,7 +73,7 @@ streamlit run app.py
 Requires [Ollama](https://ollama.com) running locally with `qwen2.5:3b` pulled:
 
 ```bash
-ollama pull qwen2.5:3b
+ollama pull llama3.2:3b
 ```
 
 ---

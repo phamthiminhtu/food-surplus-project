@@ -2,68 +2,63 @@
 
 ## Problem Statement
 
-Small restaurants prepare food fresh every day and inevitably have leftovers at the end of service — unsold dishes, prepped-but-unused ingredients, or excess cooked portions. Unlike supermarkets, they have no packaging, no barcodes, and no inventory system. The food is real and good, but donating it is too hard:
+FoodCloud's Foodiverse platform currently supports two ways for donors to identify and list food products:
 
-- A chef at end of shift doesn't have time to fill a form.
-- There is no label to scan, no barcode to read, no printed expiry date.
-- Allergens live in the chef's head, not on a sticker.
-- Collection must happen within hours, not days.
-- Most donation platforms are designed around packaged goods — restaurants simply don't fit.
+- **Barcode scanning** — works well for packaged, commercially produced goods with a standard barcode
+- **Manual text entry** — a fallback that requires staff to type every field by hand
 
-The result: perfectly good food gets binned every night.
+**OCR (reading text from packaging) and voice input are not implemented or advertised capabilities in Foodiverse.**
 
-This system is a **voice-and-photo-first donation assistant built around how a small restaurant actually works** — not around how a supermarket does inventory. It removes friction from the donor's side so that submitting a donation takes under two minutes at the end of a shift, and routes that listing to FoodCloud for charity matching and collection.
+This is a meaningful gap. Small restaurants donating surplus food typically have:
+- Packaged ingredients with printed labels (brand, product name, weight, expiry, allergens) — all the information needed for a listing, already printed on the box or packet
+- No barcode scanner on hand, or goods whose barcodes don't resolve in the Foodiverse product database
+- Staff with limited time who will not manually type every field on a form at end of service
+
+The result: the information exists on the packaging, but extracting it into Foodiverse requires either a working barcode scan or tedious manual entry. Either path creates enough friction that many donations simply don't get listed.
+
+**This system adds OCR and voice-from-packaging as new input methods** — a donor automation layer that sits in front of FoodCloud. Staff photograph a label or read it aloud, the AI extracts the structured fields, a human confirms, and the validated listing is submitted to FoodCloud. No barcode scanner required, no typing required.
 
 ---
 
-## How Restaurants Differ from Supermarkets
+## Gap in Foodiverse Today
 
-| Dimension | Supermarket | Small Restaurant |
+| Input method | Foodiverse | This system |
 |---|---|---|
-| Food type | Packaged, labelled | Fresh, cooked, unpackaged |
-| Identification | Barcode, SKU | Dish name, verbal description |
-| Expiry | Printed on label | Same-day or within hours |
-| Allergens | Printed on packaging | Known by chef, not written down |
-| Quantity unit | Weight (kg), units | Portions, trays, pots |
-| Lead time | Hours to days | End of shift (urgent) |
-| Staff availability | Dedicated back-office | Chef, hands full |
-| Input preference | Systematic scan | Voice or quick photo |
-
-The system must be designed around the restaurant column, not the supermarket column.
+| Barcode scan | Supported | Not needed (OCR/voice cover it) |
+| Manual text entry | Supported | Replaced by AI extraction |
+| OCR from label photo | **Not implemented** | Core feature |
+| Voice from packaging | **Not implemented** | Core feature |
 
 ---
 
 ## Architecture
 
 ```
-Restaurant Staff
+Restaurant / Small Donor
       |
       v
-Capture Layer (voice-first, photo-second, text fallback)
-- Voice: "We have leftover lamb stew, about 20 portions, still hot"
-- Photo: snap the tray or pot
-- Text: free-form description typed quickly
+Capture Layer
+- Photo of label or packaging → OCR extracts printed text
+- Voice: staff reads label aloud → speech-to-text transcription
+- Text: manual fallback
       |
       v
-AI-Assisted Extraction (small LLM, runs locally via Ollama)
-- Infer food name and category from description
-- Estimate quantity in portions or kg
-- Infer expiry window: cooked food → same-day, raw prep → today + 1
-- Infer likely allergens from dish name (e.g. "carbonara" → eggs, dairy, gluten)
-- Flag low-confidence inferences for human confirmation
-- Human reviews and confirms before submission
+AI-Assisted Extraction (small LLM via Ollama)
+- Parse extracted text into structured fields:
+  food name, quantity, expiry date, allergens, storage
+- Flag fields that could not be confidently extracted
+- Human reviews and corrects before submission
       |
       v
 Validation Layer (deterministic rules)
-- Collection window: must be collectible within 4 hours
-- Temperature: hot food flagged for immediate collection
-- Allergen completeness: warn if common dish but no allergens listed
-- Required fields: food name, quantity, collection window
+- Expiry date: must be today or future
+- Required fields: food name, quantity
+- Allergen completeness check
       |
       v
 FoodCloud Integration (mocked in demo)
-- Submit validated listing
-- Receive collection ETA
+- Submit validated listing to Foodiverse
+- Receive acceptance and collection status
       |
       v
 FoodCloud Platform
@@ -72,50 +67,38 @@ FoodCloud Platform
 
 ---
 
-## Key Design Decisions for Restaurant Context
+## Key Design Decisions
 
-### 1. Voice-first input
-Chefs and kitchen staff are time-pressed at end of shift. Typing a form is a barrier. Voice input with a single button tap is the primary path. Text description is the fallback.
+### 1. OCR as the primary input path
+The label photo is the most natural action for a staff member with a packaged item in hand. OCR extracts the printed text, which the LLM then parses into structured fields. This covers the common case where the barcode is absent, damaged, or not in Foodiverse's database.
 
-Photo upload is for label-less identification: a photo of a pot of soup or a tray of sandwiches gives the AI visual context, but OCR is not the main value — dish recognition from the description matters more.
+### 2. Voice as an alternative to OCR
+For staff who find it faster to read a label aloud than photograph it, voice input produces the same unstructured text that the LLM parses. Both paths converge at the same extraction step.
 
-### 2. Expiry is implicit, not scanned
-Restaurant food has no printed expiry. The system defaults:
-- Cooked/hot food → collectible today, within 4 hours
-- Raw prepped ingredients → today + 1 day
-- Baked goods → today + 1 day
+### 3. LLM extracts structure from unstructured text
+Whether input comes from OCR, voice, or typing, the text is unstructured. The LLM's job is to identify and normalise the relevant fields — product name, quantity, expiry date, allergens, storage instructions — from whatever text it receives. Low-confidence extractions are flagged for human correction.
 
-The AI infers category from the description. Staff can override. No barcode scanning needed.
-
-### 3. Allergen inference from dish name
-The LLM is prompted to suggest allergens based on dish name before asking the chef. This flips the UX: instead of "please list allergens", the system says "we think this contains gluten, dairy — is that right?" The chef confirms or corrects. This is faster and catches more than an empty field.
-
-### 4. Quantity in portions, not kg
-Restaurants think in portions and trays, not kilograms. The system accepts natural language quantities ("about 20 portions", "a full tray", "half a pot") and stores them as-is. It optionally converts to kg for FoodCloud submission using rough estimates.
-
-### 5. Urgency by default
-Every listing from a restaurant is treated as time-sensitive. The UI prominently shows collection window and highlights listings expiring soon. This drives faster charity matching on the FoodCloud side.
+### 4. Human confirmation before submission
+The AI never submits directly. Every listing goes through a review step where staff can see what was extracted, correct any errors, and confirm. This keeps the human in the loop for food safety accountability.
 
 ---
 
 ## MVP Scope (3-hour demo)
 
 ### In scope
-- Voice input → AI extraction → review form → save listing
-- Photo upload → description text → AI extraction → review form → save listing
-- Allergen suggestion from dish name with confirm/edit
-- Implicit expiry: cooked vs. raw category selector with auto-fill
-- Quantity in natural language (portions, trays)
-- Validation: collection window, required fields, allergen completeness
-- Donation log with status
+- Photo upload → OCR → LLM extraction → editable review form → save listing
+- Voice input → LLM extraction → editable review form → save listing
+- Text description fallback
+- Validation: expiry date, required fields, allergen check
+- Donation log
 
 ### Out of scope (post-demo)
-- Real FoodCloud API integration
+- Real FoodCloud / Foodiverse API submission
+- Barcode scanning
 - User authentication
-- Push notifications
-- Maps / collection routing
+- Push notifications / collection coordination
 - ESG reporting
-- Multi-restaurant accounts
+- Multi-location accounts
 
 ---
 
@@ -125,7 +108,7 @@ Every listing from a restaurant is treated as time-sensitive. The UI prominently
 food-surplus-project/
 ├── app.py              — Streamlit UI
 ├── llm.py              — Ollama/Qwen inference
-├── ocr.py              — Image text extraction (fallback only)
+├── ocr.py              — Label text extraction from image
 ├── validation.py       — Deterministic safety checks
 ├── db.py               — SQLite persistence
 ├── requirements.txt
@@ -150,29 +133,25 @@ food-surplus-project/
 
 ## LLM Prompt Design
 
-The prompt is adapted for restaurant food — no barcodes, dish-name-driven allergen inference, implicit expiry:
+The prompt treats all input as text extracted from packaging — OCR output, voice transcription, or manual description:
 
 ```
-You are helping a small restaurant donate leftover food.
+You are helping a food donor prepare a listing for FoodCloud.
 
-Description from restaurant staff:
+The following text was extracted from a food label or spoken by staff reading a label:
 "{text}"
 
-Extract the following. Use the dish name to infer allergens if not stated.
-For expiry: if the food is cooked/hot, set collection_window to "today, within 4 hours".
-If raw/prepped ingredients, set to "today".
+Extract the structured fields below. Use only what is present in the text — do not invent values.
+If a field cannot be determined, return an empty string or empty array.
 
 Return ONLY valid JSON:
 {
   "food_name": "",
-  "category": "cooked | raw_prep | baked | other",
-  "quantity": "e.g. 20 portions, 1 tray, half a pot",
-  "collection_window": "today, within 4 hours | today | today + 1 day",
-  "allergens": ["inferred list"],
-  "allergens_inferred": true or false,
-  "storage": "hot | room temperature | refrigerated",
-  "notes": "any extra context",
-  "confidence": "high | low"
+  "quantity": "e.g. 500g, 2 kg, 12 units",
+  "expiry_date": "YYYY-MM-DD or empty string",
+  "allergens": ["list from label, empty array if none stated"],
+  "storage": "e.g. refrigerate after opening, store in a cool dry place",
+  "confidence": "high or low"
 }
 ```
 
@@ -184,6 +163,6 @@ Return ONLY valid JSON:
 |---|---|
 | Food name required | Non-empty string |
 | Quantity required | Non-empty string |
-| Collection window | Must be today (cooked food expires same day) |
-| Allergens | Warn if dish name suggests allergens but list is empty |
+| Expiry date format | Must parse as YYYY-MM-DD if provided |
+| Expiry not in past | Reject if expiry date < today |
 | Confidence low | Flag for mandatory human review before submit |

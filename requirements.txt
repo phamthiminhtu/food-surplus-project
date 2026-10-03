@@ -4,9 +4,10 @@ duckdb
 requests
 Pillow
 
-# OCR — install ONE (pytesseract also needs: brew install tesseract)
+# OCR — pytesseract needs: brew install tesseract
+# pillow-heif adds HEIC support for iPhone photos
 pytesseract
-easyocr
+pillow-heif
 
 # Voice (optional — also needs: brew install portaudio)
 SpeechRecognition

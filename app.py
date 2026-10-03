@@ -1,7 +1,7 @@
 import streamlit as st
 
 from src import DonationData, DonationRepository, DonationExtractor, DonationValidator
-from src import ImageInputSource, TextInputSource, VoiceInputSource
+from src import TextInputSource, VoiceInputSource
 
 repository = DonationRepository()
 extractor = DonationExtractor()
@@ -27,13 +27,12 @@ with tab_capture:
         uploaded = st.file_uploader("Upload a photo of the food or its label", type=["jpg", "jpeg", "png"])
         if uploaded:
             st.image(uploaded, width=320)
-            with st.spinner("Running OCR..."):
-                raw_text = ImageInputSource().get_text(uploaded.read())
-            if raw_text:
-                raw_text = st.text_area("Extracted text (edit if needed)", value=raw_text, height=120)
-            else:
-                st.warning("OCR found no text. Describe the food manually below.")
-                raw_text = st.text_area("Manual description", height=120)
+            if st.button("Extract with AI →", type="primary", key="vision_extract"):
+                with st.spinner("Running OCR then extracting with AI…"):
+                    try:
+                        st.session_state["extracted"] = extractor.extract_from_image(uploaded.getvalue())
+                    except Exception as error:
+                        st.error(f"AI extraction failed: {error}\n\nIs Ollama running? `ollama serve`")
 
     elif input_method == "Text description":
         raw_text = TextInputSource().get_text(
@@ -45,15 +44,18 @@ with tab_capture:
         )
 
     elif input_method == "Voice":
-        if st.button("Record (5 seconds)"):
-            try:
-                raw_text = VoiceInputSource().get_text()
-                st.success(f"Heard: {raw_text}")
-            except Exception as error:
-                st.error(f"Voice input failed: {error}. Switch to Text description.")
+        if st.button("🎙️ Record (15 seconds)"):
+            with st.spinner("Recording... speak now"):
+                try:
+                    st.session_state["voice_text"] = VoiceInputSource().get_text()
+                except Exception as error:
+                    st.error(f"Voice input failed: {error}. Switch to Text description.")
+        if "voice_text" in st.session_state:
+            raw_text = st.session_state["voice_text"]
+            st.success(f"Heard: {raw_text}")
 
-    if raw_text and st.button("Extract with AI →", type="primary"):
-        with st.spinner("Sending to Qwen 2.5 via Ollama..."):
+    if input_method != "Photo / Label" and raw_text and st.button("Extract with AI →", type="primary"):
+        with st.spinner("Sending to Ollama…"):
             try:
                 st.session_state["extracted"] = extractor.extract(raw_text)
             except Exception as error:
@@ -92,6 +94,7 @@ with tab_capture:
             st.success("Donation submitted! (Demo: saved locally — production would push to FoodCloud API)")
             st.balloons()
             del st.session_state["extracted"]
+            st.session_state.pop("voice_text", None)
 
 # ── Tab 2: Donation Log ───────────────────────────────────────────────────────
 with tab_log:

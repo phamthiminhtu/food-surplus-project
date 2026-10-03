@@ -31,7 +31,7 @@ class DonationValidator:
         """Return an error if expiry_date is malformed or already past."""
         expiry_str = donation.expiry_date.strip()
         if not expiry_str:
-            return []
+            return ["Expiry date is required."]
         try:
             expiry = date.fromisoformat(expiry_str)
             if expiry < date.today():

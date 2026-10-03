@@ -59,6 +59,8 @@ No barcode scanner needed. No manual typing.
 | DB | DuckDB |
 | FoodCloud | Mocked (out of scope for demo) |
 
+**Why a small model?** `qwen2.5:3b` runs locally with no API cost, which matters for a high-volume, low-margin use case like food donation. The tradeoff: smaller models are less reliable at structured extraction and will need prompt tuning or fine-tuning to hit production accuracy.
+
 ---
 
 ## Run

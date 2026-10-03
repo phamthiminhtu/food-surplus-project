@@ -1,3 +1,4 @@
+import re
 from abc import ABC, abstractmethod
 
 from .ocr import OcrReader
@@ -23,11 +24,15 @@ class ImageInputSource(InputSource):
 
 
 class TextInputSource(InputSource):
-    """Returns the text input directly."""
+    """Cleans and normalizes free-text input before extraction."""
 
     def get_text(self, raw_input: str) -> str:
-        """Strip and return the raw text input."""
-        return raw_input.strip()
+        """Strip, remove control characters, and collapse whitespace."""
+        text = raw_input.strip()
+        text = re.sub(r'[^\S \n]', ' ', text)   # replace tabs/weird spaces with regular space
+        text = re.sub(r' {2,}', ' ', text)       # collapse multiple spaces
+        text = re.sub(r'\n{3,}', '\n\n', text)   # collapse excessive newlines
+        return text
 
 
 class VoiceInputSource(InputSource):

@@ -55,7 +55,7 @@ with tab_capture:
             st.success(f"Heard: {raw_text}")
 
     if input_method != "Photo / Label" and raw_text and st.button("Extract with AI →", type="primary"):
-        with st.spinner("Sending to Ollama…"):
+        with st.spinner("Doing magic..."):
             try:
                 st.session_state["extracted"] = extractor.extract(raw_text)
             except Exception as error:
